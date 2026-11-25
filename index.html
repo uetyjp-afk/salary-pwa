@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0a4630">
+  <meta name="description" content="給与明細を記録・可視化するPWA">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="給与管理">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <title>給与管理アプリ</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <div class="header-inner">
+        <h1 class="logo">💰 給与管理</h1>
+        <nav class="nav">
+          <button class="nav-btn active" data-page="dashboard">ダッシュボード</button>
+          <button class="nav-btn" data-page="list">明細一覧</button>
+          <button class="nav-btn" data-page="add">追加・編集</button>
+          <button class="nav-btn" data-page="settings">設定</button>
+        </nav>
+      </div>
+    </header>
+    <main class="main">
+      <!-- ダッシュボード -->
+      <section id="page-dashboard" class="page active">
+        <div id="target-banner" class="target-banner" style="display:none">
+          <div class="target-info">
+            <span class="target-label">目標手取り（月）</span>
+            <strong id="target-amount">¥0</strong>
+          </div>
+          <div class="target-info">
+            <span class="target-label">最新月の手取り</span>
+            <strong id="target-latest">¥0</strong>
+          </div>
+          <div class="target-info">
+            <span class="target-label">差分</span>
+            <strong id="target-diff">—</strong>
+          </div>
+        </div>
+
+        <div class="summary-cards">
+          <div class="card hero">
+            <div class="card-label" id="sum-net-label">最新の手取り</div>
+            <div class="card-value" id="sum-net">—</div>
+            <div class="card-sub" id="sum-net-sub"></div>
+          </div>
+          <div class="card">
+            <div class="card-label">最新の総支給</div>
+            <div class="card-value pay" id="sum-payment">—</div>
+          </div>
+          <div class="card">
+            <div class="card-label">最新の控除</div>
+            <div class="card-value ded" id="sum-deduction">—</div>
+          </div>
+          <div class="card">
+            <div class="card-label" id="sum-year-label">今年の手取り累計</div>
+            <div class="card-value" id="sum-year-net">—</div>
+          </div>
+        </div>
+
+        <div class="dash-controls">
+          <div class="form-group">
+            <label>メイングラフの表示</label>
+            <select id="chart-view">
+              <option value="monthly">月次推移（支給・控除・手取り）</option>
+              <option value="yearly-net">年ごとの手取り額</option>
+              <option value="yearly-payment">年ごとの総支給額</option>
+              <option value="yearly-deduction">年ごとの控除額</option>
+              <option value="yearly-compare">前年度との比較（手取り）</option>
+              <option value="salary-only">給与のみの月次手取り</option>
+              <option value="bonus-only">賞与のみの推移</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>内訳の対象</label>
+            <select id="breakdown-target">
+              <option value="latest">最新の明細</option>
+              <option value="latest-salary">最新の給与</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="charts-grid">
+          <div class="chart-box chart-main">
+            <h3 id="chart-main-title">月次推移（支給・控除・手取り）</h3>
+            <canvas id="chart-trend"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3 id="chart-payment-title">最新月の支給内訳</h3>
+            <canvas id="chart-payment"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3 id="chart-deduction-title">最新月の控除内訳</h3>
+            <canvas id="chart-deduction"></canvas>
+          </div>
+        </div>
+
+        <div class="yearly-table-box">
+          <h3>年別サマリー</h3>
+          <div class="table-scroll">
+            <table class="yearly-table" id="yearly-table">
+              <thead>
+                <tr>
+                  <th>年</th>
+                  <th>総支給</th>
+                  <th>控除</th>
+                  <th>手取り</th>
+                  <th>前年比（手取り）</th>
+                  <th>件数</th>
+                </tr>
+              </thead>
+              <tbody id="yearly-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 一覧 -->
+      <section id="page-list" class="page">
+        <div class="page-header">
+          <h2>明細一覧</h2>
+          <div class="filter-bar">
+            <select id="filter-year"><option value="">すべての年</option></select>
+            <select id="filter-type">
+              <option value="">すべて</option>
+              <option value="給与">給与のみ</option>
+              <option value="賞与">賞与のみ</option>
+            </select>
+          </div>
+        </div>
+        <div id="list-container" class="list-container"></div>
+      </section>
+
+      <!-- 追加・編集 -->
+      <section id="page-add" class="page">
+        <div class="page-header"><h2 id="form-title">明細を追加</h2></div>
+        <form id="salary-form" class="salary-form">
+          <input type="hidden" id="edit-id">
+          <div class="form-section">
+            <h3>基本情報</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label>年</label>
+                <input type="number" id="year" min="2000" max="2100" required placeholder="例: 2026">
+              </div>
+              <div class="form-group">
+                <label>月</label>
+                <select id="month" required>
+                  <option value="1">1月</option><option value="2">2月</option><option value="3">3月</option>
+                  <option value="4">4月</option><option value="5">5月</option><option value="6">6月</option>
+                  <option value="7">7月</option><option value="8">8月</option><option value="9">9月</option>
+                  <option value="10">10月</option><option value="11">11月</option><option value="12">12月</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>区分</label>
+                <select id="type"><option value="給与">給与</option><option value="賞与">賞与</option></select>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h3>勤怠</h3>
+            <div class="form-row" id="attendance-fields">
+              <div class="form-group"><label>出勤日数</label><input type="number" id="workDays" step="0.5" value="0"></div>
+              <div class="form-group"><label>休出日数</label><input type="number" id="holidayWorkDays" step="0.5" value="0"></div>
+              <div class="form-group"><label>有休日数</label><input type="number" id="paidLeaveDays" step="0.5" value="0"></div>
+              <div class="form-group"><label>有休残</label><input type="number" id="paidLeaveRemain" step="0.5" value="0"></div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h3>支給項目</h3>
+            <div class="form-row" id="payment-fields"></div>
+            <div class="form-total">総支給金額: <strong id="total-payment-preview">¥0</strong></div>
+          </div>
+
+          <div class="form-section">
+            <h3>控除項目</h3>
+            <div class="form-row" id="deduction-fields"></div>
+            <div class="form-total">控除合計額: <strong id="total-deduction-preview">¥0</strong></div>
+          </div>
+
+          <div class="form-section">
+            <div class="form-group" style="max-width:100%"><label>備考</label><input type="text" id="note" placeholder="任意"></div>
+          </div>
+
+          <div class="form-section highlight">
+            <div class="form-total large">差引支給額（手取り）: <strong id="net-preview">¥0</strong></div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="submit-btn">保存する</button>
+            <button type="button" class="btn btn-secondary" id="cancel-btn" style="display:none">キャンセル</button>
+            <button type="button" class="btn btn-outline" id="copy-latest-btn">最新の明細をコピー</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- 設定 -->
+      <section id="page-settings" class="page">
+        <div class="page-header"><h2>設定・データ管理</h2></div>
+
+        <div class="settings-box">
+          <h3>表示・見た目</h3>
+          <div class="setting-row">
+            <span>ダークモード</span>
+            <label class="switch">
+              <input type="checkbox" id="dark-mode-toggle">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-box">
+          <h3>目標手取り（月額）</h3>
+          <p>ダッシュボードに最新月との差分を表示します。0で非表示。</p>
+          <div class="form-row" style="align-items:flex-end">
+            <div class="form-group" style="flex:1">
+              <label>目標金額（円）</label>
+              <input type="number" id="target-net" value="0" min="0" step="1000">
+            </div>
+            <button type="button" class="btn btn-primary" id="save-target-btn">保存</button>
+          </div>
+        </div>
+
+        <div class="settings-box">
+          <h3>入力項目のカスタマイズ</h3>
+          <p>自分や他の人の明細に合わせて、項目を追加・削除できます。</p>
+
+          <h4 class="sub-h">支給項目</h4>
+          <ul id="field-list-payment" class="field-list"></ul>
+          <div class="add-field-row">
+            <input type="text" id="new-payment-field" placeholder="新しい支給項目名">
+            <button type="button" class="btn btn-outline" id="add-payment-field">追加</button>
+          </div>
+
+          <h4 class="sub-h">控除項目</h4>
+          <ul id="field-list-deduction" class="field-list"></ul>
+          <div class="add-field-row">
+            <input type="text" id="new-deduction-field" placeholder="新しい控除項目名">
+            <button type="button" class="btn btn-outline" id="add-deduction-field">追加</button>
+          </div>
+        </div>
+
+        <div class="settings-box">
+          <h3>データの保存状態</h3>
+          <p id="save-status">確認中...</p>
+          <button class="btn btn-outline" id="force-save-btn">今すぐ保存を確認</button>
+        </div>
+
+        <div class="settings-box">
+          <h3>エクスポート / インポート</h3>
+          <p>バックアップや他端末への移行に使えます。</p>
+          <div class="btn-group">
+            <button class="btn btn-primary" id="export-btn">JSONでエクスポート</button>
+            <label class="btn btn-secondary">JSONをインポート<input type="file" id="import-file" accept=".json" hidden></label>
+          </div>
+        </div>
+
+        <div class="settings-box">
+          <h3>初期データ（Excel由来）を再読込</h3>
+          <p>空の初期状態にリセットします（既存データは消えます）。</p>
+          <button class="btn btn-outline" id="reload-seed-btn">空データにリセット</button>
+        </div>
+
+        <div class="settings-box danger">
+          <h3>全データ削除</h3>
+          <p>すべての記録を削除します。元に戻せません。</p>
+          <button class="btn btn-danger" id="clear-btn">全データを削除</button>
+        </div>
+
+        <div class="settings-box">
+          <h3>アプリについて</h3>
+          <p>データはこのブラウザ内にのみ保存されます。定期的にJSONエクスポートを推奨します。</p>
+          <p class="version">Version 4.0.0</p>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div id="toast" class="toast"></div>
+  <script src="js/app.js"></script>
+</body>
+</html>
